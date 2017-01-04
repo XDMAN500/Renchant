@@ -1,0 +1,9 @@
+name: Renchant
+main: me.varmetek.renchant.Renchant
+version: 1.0.0
+description: A simple plugin to put on the market.
+authors: [Varmetek]
+permissions:
+  renchant.use:
+    default: op
+    description: Allows users to use the plugin's functions.
