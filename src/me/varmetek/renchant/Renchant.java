@@ -17,7 +17,7 @@ public class Renchant extends JavaPlugin implements Listener
 	public void onEnable(){
 
 		getLogger().info("Renchant Activated");
-		getServer().getPluginManager().registerEvents(EnchantListener.INSTANCE,this);
+		getServer().getPluginManager().registerEvents(new EnchantListener(this),this);
 
 	}
 
@@ -30,9 +30,9 @@ public class Renchant extends JavaPlugin implements Listener
 	public static Renchant getInstance(){
 		return plugin;
 	}
-	public  BukkitTask run(Runnable run)
+	public  static BukkitTask run(Runnable run)
 	{
-		return getServer().getScheduler().runTaskLater(this,run,1L);
+		return plugin.getServer().getScheduler().runTaskLater(plugin,run,1L);
 	}
 
 }

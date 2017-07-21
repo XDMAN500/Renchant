@@ -1,6 +1,7 @@
 package me.varmetek.renchant.listener;
 
 import me.varmetek.renchant.Renchant;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.HumanEntity;
@@ -18,7 +19,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
-import org.bukkit.inventory.meta.Repairable;
 
 import java.util.List;
 import java.util.Map;
@@ -26,21 +26,24 @@ import java.util.Map;
 /**
  * Created by XDMAN500 on 1/4/2017.
  */
-public enum EnchantListener implements Listener
+public class EnchantListener implements Listener
 {
-	INSTANCE;
 
-	ItemFactory itemF;
+	private static final String permission ="renchant.use";
+	private ItemFactory itemF;
+	private Renchant plugin;
 
-	EnchantListener()
+	public EnchantListener(Renchant plugin)
 	{
-		itemF = Renchant.getInstance().getServer().getItemFactory();
+		this.plugin = plugin;
+		itemF = Bukkit.getItemFactory();
 	}
+
 	@EventHandler
 	public void updateEnchant(InventoryClickEvent ev)
 	{
-
-		if(!ev.getWhoClicked().hasPermission("renchant.use"))return;
+		Player player = (Player)ev.getWhoClicked();
+		if(!player.hasPermission( permission))return;
 		if(ev.getClickedInventory() == null)return;
 		if(ev.getClickedInventory() .getType() != InventoryType.ENCHANTING)return;
 		EnchantingInventory inv = (EnchantingInventory)ev.getClickedInventory() ;
@@ -55,7 +58,7 @@ public enum EnchantListener implements Listener
 	@EventHandler
 	public void closeEnchant(InventoryCloseEvent ev)
 	{
-		if(!ev.getPlayer().hasPermission("renchant.use"))return;
+		if(!ev.getPlayer().hasPermission( permission))return;
 		if(ev.getInventory().getType() != InventoryType.ENCHANTING)return;
 		EnchantingInventory inv = (EnchantingInventory)ev.getInventory();
 		undoSwap(inv);
@@ -70,19 +73,11 @@ public enum EnchantListener implements Listener
 	public void commitEnchant(EnchantItemEvent ev)
 	{
 
-		if(!ev.getEnchanter().hasPermission("renchant.use"))return;
+		if(!ev.getEnchanter().hasPermission( permission))return;
 		EnchantingInventory inv = (EnchantingInventory)ev.getInventory();
 		ItemStack lapis = inv.getSecondary();
-		boolean invalid = (lapis == null || lapis.getType()  != Material.INK_SACK || lapis.getEnchantments().isEmpty() );
+		boolean invalid = (lapis == null || lapis.getType()  != Material.INK_SACK || hasItemMeta(lapis));
 		if(invalid)return;
-
-	//	Map<Enchantment,Integer> map = lapis.getEnchantments();
-
-
-
-	///	for(Enchantment e : map.keySet()){// Remove all Enchantments Before item is overriden
-			//lapis.removeEnchantment(e);
-		//}
 
 
 		doSwap(inv);
@@ -92,20 +87,23 @@ public enum EnchantListener implements Listener
 
 	@EventHandler
 	public void enchant(PrepareItemEnchantEvent ev){
-		if(!ev.getEnchanter().hasPermission("renchant.use"))return;
+
+
+		if(!ev.getEnchanter().hasPermission(permission))return;
 		EnchantingInventory inv = (EnchantingInventory)ev.getInventory();
 		ItemStack item =  inv.getItem();
 		ItemStack  lapis =inv.getSecondary();
 
+
 		boolean invalid = (lapis == null || item == null ||
 				                   lapis.getType()  != Material.INK_SACK || item.getType() == Material.AIR );
-		if(invalid ||  item.getEnchantments().isEmpty())return;
+		if(invalid ||  !hasItemMeta(item))return;
 
 
 		doSwap(inv);
 
 
-		Renchant.getInstance().run(() -> ev.getEnchanter().updateInventory());
+		Renchant.run(() -> ev.getEnchanter().updateInventory());
 
 	}
 	/***
@@ -121,7 +119,7 @@ public enum EnchantListener implements Listener
 
 		boolean invalid = (lapis == null || item == null ||  lapis.getType()  != Material.INK_SACK || item.getType() == Material.AIR );
 
-		if(invalid || !lapis.hasItemMeta())return false;
+		if(invalid || !hasItemMeta(lapis))return false;
 		ItemMeta forLapis = itemF.getItemMeta(lapis.getType());
 		ItemMeta forItem = itemF.asMetaFor(lapis.getItemMeta(),item);
 
@@ -135,8 +133,10 @@ public enum EnchantListener implements Listener
 
 
 	}
-
-	private void transfer(ItemStack item, ItemMeta forItem, ItemMeta forLapis, List<HumanEntity> pl)
+	/**
+	 * Transfers non-specialized Item meta
+	 * */
+	private void transfer(ItemStack item, ItemMeta forItem, ItemMeta forLapis, List<HumanEntity> viewers)
 	{
 		if(item.getItemMeta() instanceof LeatherArmorMeta)
 		{
@@ -149,32 +149,25 @@ public enum EnchantListener implements Listener
 			{
 				Map<Enchantment, Integer> enchants = ((EnchantmentStorageMeta)item.getItemMeta()).getStoredEnchants();
 				item.setType(Material.BOOK);
-				enchants.forEach( (ench,lvl) -> forLapis.addEnchant(ench,lvl,true) );
 				item.setItemMeta(itemF.getItemMeta(item.getType()));
-				pl.forEach(p-> ((Player)p).updateInventory());
+				enchants.forEach( (ench,lvl) -> forLapis.addEnchant(ench,lvl,true) );
+
+
+				viewers.forEach(p-> ((Player)p).updateInventory());
 			}else
 			{
-				if(item.getItemMeta() instanceof Repairable)
-				{
 
-					Repairable meta = (Repairable)forItem;
-					meta.setRepairCost( ((Repairable)item.getItemMeta()).getRepairCost());
-					item.setItemMeta((ItemMeta)meta);
+				if(item.getType() == Material.BOOK ){
+
+					item.setType(Material.ENCHANTED_BOOK);
+					EnchantmentStorageMeta meta = (EnchantmentStorageMeta)itemF.asMetaFor(forItem,Material.ENCHANTED_BOOK);
+					Map<Enchantment, Integer> enchants = forLapis.getEnchants();
+					enchants.forEach((ench,lvl) -> meta.addStoredEnchant(ench,lvl,false));
+					item.setItemMeta(meta);
+
 				}else{
-					if(item.getType() == Material.BOOK && forLapis.hasEnchants()){
-						item.setType(Material.ENCHANTED_BOOK);
-						EnchantmentStorageMeta meta = (EnchantmentStorageMeta)forLapis;
-						Map<Enchantment, Integer> enchants = forLapis.getEnchants();
-						enchants.forEach((ench,lvl) -> {
-							meta.addStoredEnchant(ench,lvl,true);
-							meta.removeEnchant(ench);
-						});
-						item.setItemMeta(meta);
-						pl.forEach(p-> ((Player)p).updateInventory());
-					}else
-					{
-						item.setItemMeta(forItem);
-					}
+					item.setItemMeta(forItem);
+
 
 				}
 			}
@@ -196,7 +189,7 @@ public enum EnchantListener implements Listener
 		ItemStack  lapis =inv.getSecondary();
 
 		boolean invalid = (lapis == null || item == null ||  lapis.getType()  != Material.INK_SACK || item.getType() == Material.AIR );
-		if(invalid || !item.hasItemMeta())return false;
+		if(invalid || !hasItemMeta(item))return false;
 
 
 		ItemMeta forLapis = item.getItemMeta();
@@ -214,6 +207,25 @@ public enum EnchantListener implements Listener
 
 
 
+	}
+	/*
+	*  A method that checks if the item has any non-specialized item-meta
+	*   if item meta is present then more checks are done on the meta.
+	*   if the meta is specialized under enchantment storage then the method will return true
+	*   if not then the item meta will be converted into non-specialized item meta to be compared to the default
+	*   non specialized item meta generated by an Item factory. If the converted meta is similar to the default meta
+	 *   then the method return false for not having meta;
+	*
+	*
+	* */
+	private boolean hasItemMeta(ItemStack item){
+		if(item.hasItemMeta()){
+
+			return (item.getItemMeta() instanceof EnchantmentStorageMeta) ||
+					       !itemF.asMetaFor(item.getItemMeta(),Material.STONE).equals(itemF.getItemMeta(Material.STONE));
+		}else{
+			return false;
+		}
 	}
 
 
