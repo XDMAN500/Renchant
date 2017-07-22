@@ -1,7 +1,7 @@
 name: Renchant
 main: me.varmetek.renchant.Renchant
 version: 1.0.0
-description: A simple plugin to put on the market.
+description: A plugin that allows for the re-enchantment of items
 authors: [Varmetek]
 permissions:
   renchant.use:

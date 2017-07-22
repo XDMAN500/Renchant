@@ -39,6 +39,11 @@ public class EnchantListener implements Listener
 		itemF = Bukkit.getItemFactory();
 	}
 
+
+	/****
+	 *
+	 * This even is ran whenever a player clicks on the item or lapis slot
+	 */
 	@EventHandler
 	public void updateEnchant(InventoryClickEvent ev)
 	{
@@ -47,7 +52,7 @@ public class EnchantListener implements Listener
 		if(ev.getClickedInventory() == null)return;
 		if(ev.getClickedInventory() .getType() != InventoryType.ENCHANTING)return;
 		EnchantingInventory inv = (EnchantingInventory)ev.getClickedInventory() ;
-		undoSwap(inv);
+		transferToItem(inv);
 
 	}
 
@@ -61,13 +66,12 @@ public class EnchantListener implements Listener
 		if(!ev.getPlayer().hasPermission( permission))return;
 		if(ev.getInventory().getType() != InventoryType.ENCHANTING)return;
 		EnchantingInventory inv = (EnchantingInventory)ev.getInventory();
-		undoSwap(inv);
+		transferToItem(inv);
 
 	}
 	/***
 	 *
-	 *  Gives the Enchantments to the lapis and combines prospected enchantments with the current enchantments
-	 *  if replaceEnchants is false;
+	 *  Transfers the Enchantments to the lapis
 	 */
 	@EventHandler
 	public void commitEnchant(EnchantItemEvent ev)
@@ -80,11 +84,14 @@ public class EnchantListener implements Listener
 		if(invalid)return;
 
 
-		doSwap(inv);
+		transferToLapis(inv);
 
 	}
 
-
+	/***
+	 * Called when an item is put into the enchantment table and is ready to enchant
+	 *
+	 * */
 	@EventHandler
 	public void enchant(PrepareItemEnchantEvent ev){
 
@@ -96,14 +103,13 @@ public class EnchantListener implements Listener
 
 
 		boolean invalid = (lapis == null || item == null ||
-				                   lapis.getType()  != Material.INK_SACK || item.getType() == Material.AIR );
+				                   lapis.getType()  != Material.INK_SACK );
 		if(invalid ||  !hasItemMeta(item))return;
 
 
-		doSwap(inv);
+		transferToLapis(inv);
 
-
-		Renchant.run(() -> ev.getEnchanter().updateInventory());
+		Bukkit.getScheduler().runTask(plugin, () -> ev.getEnchanter().updateInventory());
 
 	}
 	/***
@@ -112,7 +118,7 @@ public class EnchantListener implements Listener
 	 *
 	 */
 
-	private  boolean undoSwap(EnchantingInventory inv)
+	private  boolean transferToItem(EnchantingInventory inv)
 	{
 		ItemStack item =  inv.getItem();
 		ItemStack  lapis =inv.getSecondary();
@@ -123,7 +129,7 @@ public class EnchantListener implements Listener
 		ItemMeta forLapis = itemF.getItemMeta(lapis.getType());
 		ItemMeta forItem = itemF.asMetaFor(lapis.getItemMeta(),item);
 
-		transfer(item,forItem,forLapis,inv.getViewers());
+		transferMeta(item,forItem,forLapis,inv.getViewers());
 
 			lapis.setItemMeta(forLapis);
 
@@ -133,46 +139,7 @@ public class EnchantListener implements Listener
 
 
 	}
-	/**
-	 * Transfers non-specialized Item meta
-	 * */
-	private void transfer(ItemStack item, ItemMeta forItem, ItemMeta forLapis, List<HumanEntity> viewers)
-	{
-		if(item.getItemMeta() instanceof LeatherArmorMeta)
-		{
-			LeatherArmorMeta meta = (LeatherArmorMeta)forItem;
-			meta.setColor(((LeatherArmorMeta) item.getItemMeta()).getColor());
-			item.setItemMeta(meta);
-		}else{
 
-			if(item.getItemMeta() instanceof EnchantmentStorageMeta)
-			{
-				Map<Enchantment, Integer> enchants = ((EnchantmentStorageMeta)item.getItemMeta()).getStoredEnchants();
-				item.setType(Material.BOOK);
-				item.setItemMeta(itemF.getItemMeta(item.getType()));
-				enchants.forEach( (ench,lvl) -> forLapis.addEnchant(ench,lvl,true) );
-
-
-				viewers.forEach(p-> ((Player)p).updateInventory());
-			}else
-			{
-
-				if(item.getType() == Material.BOOK ){
-
-					item.setType(Material.ENCHANTED_BOOK);
-					EnchantmentStorageMeta meta = (EnchantmentStorageMeta)itemF.asMetaFor(forItem,Material.ENCHANTED_BOOK);
-					Map<Enchantment, Integer> enchants = forLapis.getEnchants();
-					enchants.forEach((ench,lvl) -> meta.addStoredEnchant(ench,lvl,false));
-					item.setItemMeta(meta);
-
-				}else{
-					item.setItemMeta(forItem);
-
-
-				}
-			}
-		}
-	}
 	/**
 	 *
 	 *
@@ -182,20 +149,20 @@ public class EnchantListener implements Listener
 	 *
 	 */
 
-	private  boolean doSwap(EnchantingInventory inv)
+	private  boolean transferToLapis(EnchantingInventory inv)
 	{
 
 		ItemStack item =  inv.getItem();
 		ItemStack  lapis =inv.getSecondary();
 
-		boolean invalid = (lapis == null || item == null ||  lapis.getType()  != Material.INK_SACK || item.getType() == Material.AIR );
+		boolean invalid = (lapis == null || item == null ||  lapis.getType()  != Material.INK_SACK);
 		if(invalid || !hasItemMeta(item))return false;
 
 
 		ItemMeta forLapis = item.getItemMeta();
 		ItemMeta forItem = itemF.getItemMeta(item.getType());
 
-		transfer(item,forItem,forLapis,inv.getViewers());
+		transferMeta(item,forItem,forLapis,inv.getViewers());
 
 
 
@@ -208,13 +175,50 @@ public class EnchantListener implements Listener
 
 
 	}
-	/*
-	*  A method that checks if the item has any non-specialized item-meta
-	*   if item meta is present then more checks are done on the meta.
-	*   if the meta is specialized under enchantment storage then the method will return true
-	*   if not then the item meta will be converted into non-specialized item meta to be compared to the default
-	*   non specialized item meta generated by an Item factory. If the converted meta is similar to the default meta
-	 *   then the method return false for not having meta;
+	/**
+	 * Allows items with specialized {@link ItemMeta} to keep the special parts ;
+	 * */
+	private void transferMeta(ItemStack item, ItemMeta forItem, ItemMeta forLapis, List<HumanEntity> viewers)
+	{
+		if(item.getItemMeta() instanceof LeatherArmorMeta)
+		{
+			LeatherArmorMeta meta = (LeatherArmorMeta)forItem;
+			meta.setColor(((LeatherArmorMeta) item.getItemMeta()).getColor());
+			item.setItemMeta(meta);
+		}else if(item.getItemMeta() instanceof EnchantmentStorageMeta){
+
+			Map<Enchantment, Integer> enchants = ((EnchantmentStorageMeta)item.getItemMeta()).getStoredEnchants();
+			item.setType(Material.BOOK);
+			item.setItemMeta(itemF.getItemMeta(item.getType()));
+			enchants.forEach( (ench,lvl) -> forLapis.addEnchant(ench,lvl,true) );
+
+
+			viewers.forEach(p-> ((Player)p).updateInventory());
+		}else if(item.getType() == Material.BOOK ){
+
+			item.setType(Material.ENCHANTED_BOOK);
+			EnchantmentStorageMeta meta = (EnchantmentStorageMeta)itemF.asMetaFor(forItem,Material.ENCHANTED_BOOK);
+			Map<Enchantment, Integer> enchants = forLapis.getEnchants();
+			enchants.forEach((ench,lvl) -> meta.addStoredEnchant(ench,lvl,false));
+			item.setItemMeta(meta);
+
+		}else{
+			item.setItemMeta(forItem);
+
+
+			}
+
+
+	}
+
+	/**
+	 *
+	 * This method checks whether {@param item} has meta.
+	 *
+	 * If {@param item} does indeed have item meta further checks are tested. Otherwise this method returns false;
+	 * If {@param item} has {@link EnchantmentStorageMeta} then this method returns true.
+	 * If {@param item} has meta data but the data is the default value generated by {@link ItemFactory}, then this method returns false.
+	 * Conversely, if the meta is default then this method returns true.
 	*
 	*
 	* */
@@ -227,6 +231,8 @@ public class EnchantListener implements Listener
 			return false;
 		}
 	}
+
+
 
 
 
